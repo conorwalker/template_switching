@@ -1,0 +1,3 @@
+meme gold_standard_ancestral_sequences_point1_pm150.fa -dna -mod zoops -minw 6 -maxw 10 -p 4 -objfun de -neg ape_sequences_301bp_samples.fa -revcomp -markov_order 0 -seed 42 -nmotifs 50 -o zoops_differential_enrichment_ancestral_pm150_min6_max10
+meme gold_standard_ancestral_sequences_point1_pm150.fa -dna -mod zoops -minw 10 -maxw 20 -p 4 -objfun de -neg ape_sequences_301bp_samples.fa -revcomp -markov_order 0 -seed 42 -nmotifs 50 -o zoops_differential_enrichment_ancestral_pm150_min10_max20
+meme gold_standard_ancestral_sequences_point1_pm150.fa -dna -mod zoops -minw 20 -maxw 50 -p 4 -objfun de -neg ape_sequences_301bp_samples.fa -revcomp -markov_order 0 -seed 42 -nmotifs 50 -o zoops_differential_enrichment_ancestral_pm150_min20_max50
