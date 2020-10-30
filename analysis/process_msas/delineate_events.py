@@ -1143,7 +1143,7 @@ def main():
                                 filter_resolved = True
                             # if can't access resolve_status by index, only None has been output
                             # e.g. fail, no matching line found in global scan file
-                            # then try to align the mutation cluster using clustal.
+                            # then try to align the mutation cluster using muscle.
                             # this step is rarely used and provides a minor improvement in resolution
                             # for the associated upset plot vs. not performing this step
                             except TypeError:
