@@ -22,8 +22,8 @@ resolve their phylogenetic placement and report summary statistics
 
 
 **sampling_unidirectional_probabilities** </br>
-randomly sample unidirectional pairhmm log probabilities alignment blocks
-from each pairwise species alignment to form a per-base aligment quality distribution (Fig. S8)
+randomly sample unidirectional pairHMM log probabilities of alignment blocks
+from each pairwise species alignment to generate per-base aligment log-probability distributions (Fig. S8)
 
 
 **simulations** </br>
