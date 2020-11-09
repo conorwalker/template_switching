@@ -18,16 +18,14 @@ You should have received a copy of the GNU General Public License along
 with this program. If not, see <http://www.gnu.org/licenses/>.
 """
 
-
-import direction_dicts as dd
 import pandas as pd
 import subprocess
-import re
-import sys
 
 from os import scandir, makedirs, path
-from glob import glob
 from Bio import AlignIO
+from glob import glob
+
+import direction_dicts as dd
 
 
 def find_min_max_coord(list_of_lines):
@@ -55,10 +53,10 @@ def switch_point_annotations(sps, align_len, min_coord, max_coord):
     sps = [int(i) for i in sps]
     spaces = list(" " * align_len)
     p1, p2, p3, p4 = sps[0], sps[1], sps[2], sps[3]
-    spaces[p1-1] = "1"
-    spaces[p2-1] = "2"
-    spaces[p3-1] = "3"
-    spaces[p4-1] = "4"
+    spaces[p1] = "1"
+    spaces[p2] = "2"
+    spaces[p3] = "3"
+    spaces[p4] = "4"
     return "".join(spaces)[min_coord-20:max_coord+20]
 
 
@@ -148,12 +146,13 @@ def determine_failure_reason(line, direction, comp_dir):
     fwd_logprob = float(line[25])
     ts_logprob = float(line[26])
     clus_del = int(line[23])
-
     qry_len = float(line[29])
+    # factor out o1 -> M2 and M2 -> o3 transitions to get per-base
+    # log probability, described in Methods
     ts_per_base_logprob = (ts_logprob + 14.78259) / qry_len
 
-    rows = [direction, inferred_direction] + ["na"] * 9
-
+    rows = [direction, inferred_direction, "na", "na", "na", "na", "na",
+            "na", "na", "na", "na"]
     if point2 - point3 <= 8:
         rows[2] = point2 - point3
     if up_id < 0.95:
@@ -174,8 +173,8 @@ def determine_failure_reason(line, direction, comp_dir):
 
 def scan_global_file(global_scanned, target_set, direction, comp_dir):
     """
-    In the case that an event is significant in one comparison, but not congruent
-    in direction across comparisons, the global coordinates of the
+    In the case that an event is significant in one comparison, but not
+    congruent in direction across comparisons, the global coordinates of the
     significant event are used to scan for event output across all pairwise
     comparisons that would rectify the congruence.
     """
@@ -217,19 +216,6 @@ def inferred_direction(direction, inferred_dirs):
     return inferred_direction
 
 
-def pairwise_divergence(fasta_path):
-    """
-    Take in the FASTA path for printing the pairHMM output and set the 
-    divergence accordingly.
-    """
-    pairwise_comparison = fasta_path.split("/")[2]
-    homopan = ["homopan", "panhomo"]
-    if pairwise_comparison in homopan:
-        return "0.01"
-    else:
-        return "0.016"
-
-
 def combine_fail_reason(row1, row2):
     """
     Combine various reasons for failing to pass thresholds if failure was
@@ -263,54 +249,54 @@ def resolve_missing(direction, target_set, block_path):
     scan output. Try to identify inferred direction and reason for failure.
     """
     global_scanned, global_scanned1, global_scanned2 = None, None, None
-    interest_dirs = dd.determine_interest_dirs(direction)
+    int_dirs = dd.determine_interest_dirs(direction)
     if direction == "3" or direction == "5":
-        for comp_pair in interest_dirs:
+        for comp_pair in int_dirs:
             for name in glob("{}/{}/*scanned.global.csv".format(block_path,
-                                                                interest_dirs[0])):
+                                                                int_dirs[0])):
                 global_scanned1 = name
-
             for name in glob("{}/{}/*scanned.global.csv".format(block_path,
-                                                                interest_dirs[1])):
+                                                                int_dirs[1])):
                 global_scanned2 = name
-
             if not global_scanned1 and not global_scanned2:
                 return direction, [direction, "missing", "na", "na", "na",
                                    "na", "na", "na", "na", "missing", "na"]
             else:
-                scan_result1 = scan_global_file(global_scanned1, target_set, direction, interest_dirs[0])
-                scan_result2 = scan_global_file(global_scanned2, target_set, direction, interest_dirs[1])
+                scan_result1 = scan_global_file(global_scanned1, target_set,
+                                                direction, int_dirs[0])
+                scan_result2 = scan_global_file(global_scanned2, target_set,
+                                                direction, int_dirs[1])
                 if scan_result1:
                     fail_row = scan_result1
-                    inf_dir = inferred_direction(direction, [interest_dirs[0]])
+                    inf_dir = inferred_direction(direction, [int_dirs[0]])
                     fail_row[1] = inf_dir
                     return inf_dir, fail_row
                 elif scan_result2:
                     fail_row = scan_result2
-                    inf_dir = inferred_direction(direction, [interest_dirs[1]])
+                    inf_dir = inferred_direction(direction, [int_dirs[1]])
                     fail_row[1] = inf_dir
                     return inf_dir, fail_row
             return None
 
     if len(direction) == 1 or len(direction) == 3:
         for name in glob("{0}/{1}/*scanned.global.csv".format(block_path,
-                                                              interest_dirs)):
+                                                              int_dirs)):
             global_scanned = name
         if not global_scanned:
             return direction, [direction, "missing", "na", "na", "na", "na",
                                "na", "na", "na", "missing", "na"]
         else:
             scan_result = scan_global_file(global_scanned, target_set,
-                                           direction, interest_dirs)
+                                           direction, int_dirs)
 
             if scan_result:
                 fail_row = scan_result
-                inf_dir = inferred_direction(direction, [interest_dirs])
+                inf_dir = inferred_direction(direction, [int_dirs])
                 fail_row[1] = inf_dir
                 return inf_dir, fail_row
 
     elif direction in ["12", "34", "56"]:
-        for comp_pair in interest_dirs:
+        for comp_pair in int_dirs:
             for name in glob("{0}/{1}/*scanned.global.csv".format(block_path,
                                                                   comp_pair[0])):
                 global_scanned1 = name
@@ -335,44 +321,40 @@ def resolve_missing(direction, target_set, block_path):
     # formerly contained "16" [C(H,G)] and "24" [H(C,G)], removed these as
     # ILS events can be considered congruent
     elif direction in ["15", "23", "36", "45", "26", "14"]:
-        for name in glob("{0}/{1}/*scanned.global.csv".format(block_path, interest_dirs[0])):
+        for name in glob("{0}/{1}/*scanned.global.csv".format(block_path,
+                                                              int_dirs[0])):
             global_scanned1 = name
-        for name in glob("{0}/{1}/*scanned.global.csv".format(block_path, interest_dirs[1])):
+        for name in glob("{0}/{1}/*scanned.global.csv".format(block_path,
+                                                              int_dirs[1])):
             global_scanned2 = name
         if not global_scanned1 or not global_scanned2:
             return direction
         else:
-            scan_result1 = scan_global_file(global_scanned1,
-                                            target_set,
-                                            direction,
-                                            interest_dirs[0])
-            scan_result2 = scan_global_file(global_scanned2,
-                                            target_set,
-                                            direction,
-                                            interest_dirs[1])
-
+            scan_result1 = scan_global_file(global_scanned1, target_set,
+                                            direction, int_dirs[0])
+            scan_result2 = scan_global_file(global_scanned2, target_set,
+                                            direction, int_dirs[1])
             if scan_result1 and scan_result2:
                 fail_row = combine_fail_reason(scan_result1, scan_result2)
                 inf_dir = inferred_direction(direction,
-                                             [interest_dirs[0], interest_dirs[1]])
+                                             [int_dirs[0], int_dirs[1]])
                 fail_row[1] = inf_dir
                 return inf_dir, fail_row
     # Before assigning unresolved, check relevant direction events for ILS
     if direction in ["1", "2", "4", "6"]:
-        ils_interest_dir = ils_interest_dirs(direction)
-        for name in glob("{0}/{1}/*scanned.global.csv".format(block_path, ils_interest_dir)):
+        ils_int_dir = ils_interest_dirs(direction)
+        for name in glob("{0}/{1}/*scanned.global.csv".format(block_path,
+                                                              ils_int_dir)):
             global_scanned = name
         if not global_scanned:
             return direction, [direction, "missing", "na", "na", "na", "na",
                                "na", "na", "na", "missing", "na"]
         else:
-            scan_result = scan_global_file(global_scanned,
-                                           target_set,
-                                           direction,
-                                           ils_interest_dir)
+            scan_result = scan_global_file(global_scanned, target_set,
+                                           direction, ils_int_dir)
             if scan_result:
                 fail_row = scan_result
-                inf_dir = inferred_direction(direction, [ils_interest_dir])
+                inf_dir = inferred_direction(direction, [ils_int_dir])
                 fail_row[1] = inf_dir
                 return inf_dir, fail_row
     return None
@@ -402,12 +384,12 @@ def muscle_align_segs(h, p, g):
     was unsuccessful.
     """
     seqs = {"h": "", "p": "", "g": ""}
-    # muscle path
-    muscle = ""
-    with open("tmp.fa", "w") as f:
+    muscle = "/nfs/research1/goldman/conor/tools/muscle3.8.31/muscle"
+    with open("tmpfas.fa", "w") as f:
         f.write(">h\n{0}\n>p\n{1}\n>g\n{2}".format(h, p, g))
     try:
-        musc_out = subprocess.check_output([muscle, "-in", "tmp.fa", "-quiet"])
+        musc_out = subprocess.check_output([muscle, "-in",
+                                            "tmpfas.fa", "-quiet"])
         musc_out = musc_out.decode("utf-8").split("\n")[:-1]
     except subprocess.CalledProcessError:
         return h, p, g
@@ -492,10 +474,10 @@ def annotate_fail(fail_row):
 def determine_anc_desc_seqs(direction, anc_desc_dic, list_of_fis):
     """
     Take in a congruent direction, the dictionary to map this
-    direction to ancestral and descendent sequences, and a list of
+    direction to ancestral and descendant sequences, and a list of
     filtered event files. From these files, construc the pairwise
     alignment FASTA file name, and extract the ancestral and
-    descendent sequences from this. This will be used to generate
+    descendant sequences from this. This will be used to generate
     the upstream/downstream sequences for secondary structure analysis.
     """
     # determine ancestor/descendant
@@ -507,7 +489,7 @@ def determine_anc_desc_seqs(direction, anc_desc_dic, list_of_fis):
             fas_fis.append(".".join(csv_fi.split(".")[:-5]) + ".fas")
         else:
             fas_fis.append(".".join(csv_fi.split(".")[:-4]) + ".fas")
-    # determine prefix for descendent sequences
+    # determine prefix for descendant sequences
     desc_prefix = anc_desc[0][0]
     # go through alignments, extract sequences
     for fas_fi in fas_fis:
@@ -522,16 +504,13 @@ def determine_anc_desc_seqs(direction, anc_desc_dic, list_of_fis):
     return desc_seq, anc_seq
 
 
-def determine_switch_points(final_direction, anc_desc_dic,
-                            list_of_fis, anc_or_desc):
+def determine_switch_points(anc_desc, list_of_fis, anc_or_desc):
     """
-    Take in direction, anc_desc_dic and list of finames, a well as indicator for
-    if the desired switch points are ancestral of descendent. For ancestor,
-    return points 1-4 coordinates, for ref, just return point 1 coorinates.
+    Take in anc_desc, list of finames, a well as indicator for
+    if the desired switch points are ancestral of descendant. For ancestor,
+    return points 1-4 coordinates, for ref, just return point 1 coordinates.
     """
-    anc_desc = anc_desc_dic[final_direction]
     desc_prefix = anc_desc[0][0]
-
     for csv_fi in list_of_fis:
         if csv_fi.split("/")[2][:3] == desc_prefix[:3]:
             csv_fi_local = csv_fi.split(".")
@@ -549,38 +528,63 @@ def determine_switch_points(final_direction, anc_desc_dic,
                 return int(csv_read_split[5])
 
 
+def determine_inf_switch_points(anc_desc, list_of_fis, anc_or_desc):
+    """
+    Take in anc_desc, list of finames, a well as indicator for
+    if the desired switch points are ancestral of descendant. For ancestor,
+    return points 1-4 coordinates, for ref, just return point 1 coordinates.
+    """
+    for desc_prefix in anc_desc[0]:
+        for csv_fi in list_of_fis:
+            if csv_fi.split("/")[2][:3] == desc_prefix[:3]:
+                csv_fi_local = csv_fi.split(".")
+                csv_fi_local = ".".join(csv_fi_local[:-2]) + ".csv"
+                with open(csv_fi_local, "r") as event_f:
+                    csv_read = event_f.readlines()[-1]
+                    csv_read_split = csv_read.strip().split(",")
+                if anc_or_desc == "anc":
+                    p1 = int(csv_read_split[6])
+                    p2 = int(csv_read_split[7])
+                    p3 = int(csv_read_split[8])
+                    p4 = int(csv_read_split[9])
+                    return [p1, p2, p3, p4]
+                elif anc_or_desc == "desc":
+                    return int(csv_read_split[5])
+
+
 def determine_point_ordering(anc_points):
     """
     Return indices of ancestral switch points.
     """
     points = [1, 2, 3, 4]
-    return "".join([str(x) for _, x in sorted(zip([int(i) for i in anc_points], points))])
+    return "".join([str(x) for _, x in sorted(zip([int(i)
+                   for i in anc_points], points))])
 
 
 def main():
+    root_dir = "hominid_template_switch_output"
     # make output directories
-    if not path.exists("hominid_template_switch_output"):
-        makedirs("hominid_template_switch_output")
-    if not path.exists("hominid_template_switch_output/pairHMM_output"):
-        makedirs("hominid_template_switch_output/pairHMM_output")
-    if not path.exists("hominid_template_switch_output/directions"):
-        makedirs("hominid_template_switch_output/directions")
-    if not path.exists("hominid_template_switch_output/fail_dataframe"):
-        makedirs("hominid_template_switch_output/fail_dataframe")
-    if not path.exists("hominid_template_switch_output/congruent_human_desc"):
-        makedirs("hominid_template_switch_output/congruent_human_desc")
-    if not path.exists("hominid_template_switch_output/sequences"):
-        makedirs("hominid_template_switch_output/sequences")
-    if not path.exists("hominid_template_switch_output/troubleshooting"):
-        makedirs("hominid_template_switch_output/troubleshooting")
-    if not path.exists("hominid_template_switch_output/point_orders"):
-        makedirs("hominid_template_switch_output/point_orders")
+    if not path.exists(root_dir):
+        makedirs(root_dir)
+    if not path.exists("{}/pairHMM_output".format(root_dir)):
+        makedirs("{}/pairHMM_output".format(root_dir))
+    if not path.exists("{}/directions".format(root_dir)):
+        makedirs("{}/directions".format(root_dir))
+    if not path.exists("{}/fail_dataframe".format(root_dir)):
+        makedirs("{}/fail_dataframe".format(root_dir))
+    if not path.exists("{}/bed_output".format(root_dir)):
+        makedirs("{}/bed_output".format(root_dir))
+    if not path.exists("{}/sequences".format(root_dir)):
+        makedirs("{}/sequences".format(root_dir))
+    if not path.exists("{}/troubleshooting".format(root_dir)):
+        makedirs("{}/troubleshooting".format(root_dir))
+    if not path.exists("{}/point_orders".format(root_dir)):
+        makedirs("{}/point_orders".format(root_dir))
 
     # add header to bed files
-    with open("hominid_template_switch_output/congruent_human_desc/human_desc_congruent.bed", "w") as bedf:
-        bedf.write("chrom\tchromStart\tchromEnd\tstrand\teventID\tlog_probability_ratio\tevent_type\n")
-    with open("hominid_template_switch_output/congruent_human_desc/human_anc_congruent.bed", "w") as bedf:
-        bedf.write("chrom\tchromStart\tchromEnd\tstrand\teventID\tlog_probability_ratio\tevent_type\n")
+    out_bed = "{}/bed_output/template_switch_events.bed".format(root_dir)
+    with open(out_bed, "w") as bed_f:
+        bed_f.write("chrom\tchromStart\tchromEnd\tname\torientation\tsetAnnotation\thumanAncOrDesc\teventType\n")
 
     # used to check fragment content later
     nucs = ["A", "T", "C", "G"]
@@ -606,14 +610,14 @@ def main():
 
     # df to hold fail reasons per event
     fail_columns = ["direction", "inferred_direction", "ts_len", "up_id",
-                    "down_id", "masked", "sum_nuc", "logprob_ratio", "clus_del",
-                    "missing", "logprob_perbase"]
+                    "down_id", "masked", "sum_nuc", "logprob_ratio",
+                    "clus_del", "missing", "logprob_perbase"]
     fail_df = pd.DataFrame(columns=fail_columns)
 
     # path to pairHMM
     pairHMM = "tools/tsa_pairhmm/tsa_pairhmm"
 
-    with scandir("alignment_blocks") as block_dir:
+    with scandir("alignment_blocks_np") as block_dir:
         # process each alignment block
         for block in block_dir:
             sequence_dic = {"homo_sapiens": "",
@@ -641,55 +645,66 @@ def main():
                     sequence_dic["pongo_abelii"] = str(record.seq)
 
             # keep track of number of events that passed filtering from
-            # event_compendium.py
+            # find_events.py
             filter_count = 0
-            with scandir("alignment_blocks/" + current_block) as curr_dir:
+            with scandir("alignment_blocks_np/" + current_block) as curr_dir:
                 df_rows = []
                 # process each of the 6 pairwise blocks separately, ie.
                 # chimp <-> human, human <-> gorilla, chimp <-> gorilla
                 for comparison in curr_dir:
-                    with scandir("alignment_blocks/{0}/{1}".format(current_block, comparison.name)) as comp:
+                    with scandir("alignment_blocks_np/{0}/{1}".format(current_block, comparison.name)) as comp:
                         # get all csvs that passed filters using the global
                         # coordinates ie. global coords = those that correspond
                         # to multiple alignment before removing pairwise
                         # gap-only columns
                         for filterfi in comp:
-                            # for each event csv that passes filters, get event
-                            # CSV and event FASTA
+                            # for each event csv that passes filters, get
+                            # event CSV and event FASTA
                             if "filtered" in filterfi.name and "global" in filterfi.name:
                                 spl_name = filterfi.name.split(".")
-                                # now indexes based on position of "filtered"
-                                # in file name, ape regions tagged with CAB*
-                                # had extra fields, messed up printing
+                                # now indexes based on position of "filtered" in file name,
+                                # ape regions tagged with CAB* had extra fields, messed up printing
                                 if "large_flank" in filterfi.name:
                                     local_filterfi = ".".join(spl_name[:spl_name.index("filtered")+3]) + ".csv"
                                 else:
                                     local_filterfi = ".".join(spl_name[:spl_name.index("filtered")+2]) + ".csv"
 
-                                local_filterfi = "alignment_blocks/{0}/{1}/{2}".format(current_block,
-                                                                                       comparison.name,
-                                                                                       local_filterfi)
-                                # account for chrom names with ""." in name
+                                local_filterfi = "alignment_blocks_np/{0}/{1}/{2}".format(current_block,
+                                                                                          comparison.name,
+                                                                                          local_filterfi)
+                                # account for "chrom" names with "." in name
                                 pair_fasfi = spl_name[:5]
                                 pair_fasfi = ".".join(list(filter(lambda b: b != "filtered", pair_fasfi))) + ".fas"
                                 filter_count += 1
-                                pair_fasfiname_format = "alignment_blocks/{0}/{1}/{2}".format(current_block,
-                                                                                              comparison.name,
-                                                                                              pair_fasfi)
-                                finame_format = "alignment_blocks/{0}/{1}/{2}".format(current_block,
-                                                                                      comparison.name,
-                                                                                      filterfi.name)
+                                pair_fasfiname_format = "alignment_blocks_np/{0}/{1}/{2}".format(current_block,
+                                                                                                 comparison.name,
+                                                                                                 pair_fasfi)
+                                finame_format = "alignment_blocks_np/{0}/{1}/{2}".format(current_block,
+                                                                                         comparison.name,
+                                                                                         filterfi.name)
                                 with open(finame_format, "r") as fi:
-                                    # retrieve some of the values from the event CSV corresponding to
-                                    # coordinates that can be used to check for overlaps
-                                    # across species comparisons in global coordinates
+                                    # retrieve some of the values from the
+                                    # event CSV corresponding to coordinates
+                                    # that can be used to check for overlaps
+                                    # across species comparisons in global
+                                    # coordinates
                                     csv_vals = [int(i) for i in fi.readlines()[-1].strip().split(",")[1:5]]
-                                    # get some meta-information about the event and store associated files
-                                    df_rows.append([comparison.name, finame_format, csv_vals[1], csv_vals[2], csv_vals[3], pair_fasfiname_format, local_filterfi])
+                                    # get some meta-information about the
+                                    # event and store associated files
+                                    df_rows.append([comparison.name,
+                                                    finame_format,
+                                                    csv_vals[1],
+                                                    csv_vals[2],
+                                                    csv_vals[3],
+                                                    pair_fasfiname_format,
+                                                    local_filterfi])
 
-                # initialise DFs and dicts for processing all events in each multiple alignment block
-                df_ref = pd.DataFrame(df_rows, columns=["pair_comp", "path", "chrom_start", "start_coord", "end_coord", "pair_fasfi", "local_filterfi"])
-                df_pop = pd.DataFrame(df_rows, columns=["pair_comp", "path", "chrom_start", "start_coord", "end_coord", "pair_fasfi", "local_filterfi"])
+                # initialise DFs and dicts for processing all events in
+                # each multiple alignment block
+                df_cols = ["pair_comp", "path", "chrom_start", "start_coord",
+                           "end_coord", "pair_fasfi", "local_filterfi"]
+                df_ref = pd.DataFrame(df_rows, columns=df_cols)
+                df_pop = pd.DataFrame(df_rows, columns=df_cols)
                 unique_events = {}
                 unique_events_finames = {}
                 unique_events_local_finames = {}
@@ -702,6 +717,7 @@ def main():
                 dir_matched = []
                 for index, row in df_ref.iterrows():
                     event_n += 1
+                    # rename for brevity below
                     comp, event_path, chrom_start, start, end = row.pair_comp, row.path, row.chrom_start, row.start_coord, row.end_coord
                     # don't process dir if already seen
                     if str(row.path) in dir_matched:
@@ -709,7 +725,8 @@ def main():
 
                     # go through rows for this alignment block
                     for ind_pop, row_pop in df_pop.iterrows():
-                        # if the start coords across comparisons match, add to dictionaries
+                        # if the start coords across comparisons match, add
+                        # to dictionaries
                         if row_pop.pair_comp == comp and (row_pop.start_coord == start or row_pop.end_coord == end or row_pop.chrom_start == chrom_start):
                             unique_events["event_{0}".format(event_n)] = [comp_dic[comp]]
                             unique_events_finames["event_{0}".format(event_n)] = [event_path]
@@ -755,12 +772,12 @@ def main():
 
                                 # store path for blocks with matched events
                                 dir_matched.append(str(row_pop.path))
+
                 # process all unique events found
                 for k, v in unique_events.items():
                     # store the ascertained direction of the event for printing
                     # and checking congruence
                     final_direction = "".join([str(i) for i in sorted(v)])
-
                     # keep track of unique events processed
                     total_event_count += 1
 
@@ -783,32 +800,36 @@ def main():
                         "35": [["homo", "pan"], ["gor"]],
                         "1234": [["homo"], ["pan", "gor"]],
                         "1256": [["pan"], ["homo", "gor"]],
+                        "3456": [["homo", "pan", "gor"], ["homo", "pan", "gor"]],
                         # ILS C(H,G)
                         "16": [["homo", "gor"], ["pan"]],
                         # ILS H(C,G)
                         "24": [["pan", "gor"], ["homo"]]
                     }
 
-                    # keep track if the human bed entry has been created for
-                    # each congruent event, use later to find genomic feature
-                    # associations and HAR overlaps
-                    congruent_human_coord_logged = 0
-                    congruent_human_anc_coord_logged = 0
-                    human_desc_bool = 0
-                    human_anc_bool = 0
+                    set_annotation = ""
                     # determine if larger scan-flank parameter needed for
                     # the TSA pairHMM
                     large_flank = 0
+                    acceptable_line_dic = {}
 
-                    # if the evolutionary direction is congruent, process
+                    ############################################
+                    # PROCESS EVOLUTIONARILY CONSISTENT EVENTS #
+                    ############################################
                     if final_direction in acceptable:
-                        # per congruent event, record one set of switch point ordering
-                        # as well as reversibility for reporting later
                         if final_direction not in ["1234", "1256", "3456"]:
-                            ancestral_switch_point_output = determine_switch_points(final_direction, anc_desc_dic, unique_events_finames[k], "anc")
+                            set_annotation = "gold_standard"
+                        else:
+                            set_annotation = "ambiguous_placement"
+                        # per congruent event, record one set of switch
+                        # point ordering as well as reversibility
+                        # for reporting later
+                        if final_direction not in ["1234", "1256", "3456"]:
+                            ancestral_switch_point_output = determine_switch_points(anc_desc_dic[final_direction], unique_events_finames[k], "anc")
                             ancestral_switch_point_order = determine_point_ordering(ancestral_switch_point_output)
-                            # if congruent direction in 4 comparisons, it is reversible,
-                            # retrieve the descendant switch point ordering
+                            # if congruent direction in 4 comparisons, it is
+                            # reversible retrieve the descendant switch point
+                            # ordering
                             if len(unique_events_finames[k]) == 4:
                                 reversible_switch_point_order = "1"
                             else:
@@ -822,165 +843,130 @@ def main():
                         # store this event as congruent
                         congruent_directions.append(final_direction)
 
-                        # don't try to resolve, print blocks, clusters and pairHMM output for
-                        # each comparison with event
-                        acceptable_line_dic = {}
+                        # don't try to resolve, print blocks, clusters and
+                        # pairHMM output for each comparison with event
                         final_direction_list.append(final_direction)
 
-                        # for events in which human can be resolved as ancestral or
-                        # descendant, store the event coordinates in a bed file for
-                        # genomic feature association later
                         # check here for ancestra/descendant state of human
-                        if final_direction not in ["1234", "1256", "3456"]:
-                            anc_desc = anc_desc_dic[final_direction]
-                            if (len(anc_desc[0]) == 2 and anc_desc[0][0] == "homo") \
-                               or (len(anc_desc[0]) == 1 and anc_desc[0] == "homo") \
-                               or (len(anc_desc[0]) == 1 and anc_desc[0][0] == "homo"):
-                                human_desc_bool = 1
-                            if "homo" in anc_desc[1]:
-                                human_anc_bool = 1
+                        anc_desc = anc_desc_dic[final_direction]
+                        if "homo" in anc_desc[0]:
+                            # human_desc_bool = 1
+                            anc_or_desc = "descendant"
+                        elif "homo" in anc_desc[1]:
+                            # human_anc_bool = 1
+                            anc_or_desc = "ancestral"
+                        # if a 3456 event is found, resolve manually
+                        # register human as descendant for downstream
+                        # processing, although impossible to tell with
+                        # 3 pairwise comparisons
+                        if final_direction == "3456":
+                            # human_desc_bool = 1
+                            anc_or_desc = "ambiguous"
 
-                        # store output of pairHMM for congruent events
-                        with open("hominid_template_switch_output/pairHMM_output/congruent_pairHMM_output.csv", "a+") as f:
-                            for fis in unique_events_finames[k]:
-                                # gets the non global file for neg coord generation
-                                fi_for_bed = ".".join(fis.split(".")[:-2]) + ".csv"
-                                # determine if found on negative strand, changes how
-                                # coordinates are parsed, given that all coordinates
-                                # should be presented on + strand for associating with
-                                # genomic features and retrieving sequences from databases
-                                if "large_flank" in fis.split("."):
-                                    large_flank = 1
-                                    pair_fasfi = ".".join(fis.split(".")[:-5]) + ".fas"
-                                else:
-                                    pair_fasfi = ".".join(fis.split(".")[:-4]) + ".fas"
-                                if fis.split("/")[2][:4] == "homo" and congruent_human_coord_logged == 0 and human_desc_bool == 1:
-                                    desc_neg = "+"
-                                    with open(pair_fasfi, "r") as pairf:
-                                        for line_i, line in enumerate(pairf):
-                                            if line_i > 0:
-                                                break
-                                            desc_fasta_header = str(re.search("^>.*", line).group(0))
-                                            header_start = int(desc_fasta_header.split(".")[2])
-                                            if re.search("^>.*_neg", line):
-                                                desc_neg = "-"
-                                if fis.split("/")[2][-4:] == "homo" and congruent_human_anc_coord_logged == 0 and human_anc_bool == 1:
-                                    anc_neg = "+"
-                                    with open(pair_fasfi, "r") as pairf:
-                                        for line_i, line in enumerate(pairf):
-                                            if line_i != 2:
-                                                continue
-                                            anc_fasta_header = str(re.search("^>.*", line).group(0))
-                                            header_start = int(anc_fasta_header.split(".")[2])
-                                            # to prevent wrong chrom length when retrieving
-                                            # human ancestral coords
-                                            human_chrom = anc_fasta_header.split(".")[1]
-                                            if re.search("^>.*_neg", line):
-                                                anc_neg = "-"
-                                with open(fi_for_bed, "r") as local_event_fi:
-                                    local_csv_read = local_event_fi.readlines()[-1]
+                        for fis in unique_events_finames[k]:
+                            # gets the non global file for neg coord generation
+                            fi_for_bed = ".".join(fis.split(".")[:-2]) + ".csv"
+                            # determine if found on negative strand, changes
+                            # how coordinates are parsed, given that all
+                            # coordinates should be presented on + strand for
+                            # associating with genomic features and retrieving
+                            # sequences from databases
+                            if "large_flank" in fis.split("."):
+                                large_flank = 1
+                                pair_fasfi = ".".join(fis.split(".")[:-5]) + ".fas"
+                            else:
+                                pair_fasfi = ".".join(fis.split(".")[:-4]) + ".fas"
+
+                            # get switch points for this comparison for
+                            # printing in output
+                            with open(fis, "r") as event_f:
+                                # get last line as above
+                                csv_read = event_f.readlines()[-1]
+                                csv_read_split = csv_read.strip().split(",")
+                                # add csv output to dic or append if exists
+                                try:
+                                    acceptable_line_dic[k].append(csv_read_split)
+                                except KeyError:
+                                    acceptable_line_dic[k] = [csv_read_split]
+                                # get switch point order
+                                comp_switch_point_dic[fis.split("/")[2]] = csv_read_split[6:10]
+                                if len(csv_read_split) == 2:
+                                    csv_read_split = csv_read_split[-1]
+                                clus_start.append(int(csv_read_split[3]))
+                                clus_end.append(int(csv_read_split[4]))
+
+                            with open(fi_for_bed, "r") as local_event_fi:
+                                local_csv_read = local_event_fi.readlines()[-1]
+
+                            # store output of pairHMM for congruent events
+                            with open("hominid_template_switch_output/pairHMM_output/congruent_pairHMM_output.csv", "a+") as f:
                                 f.write(str(total_event_count) + "," + final_direction + "," + local_csv_read)
 
-                                # get switch points for this comparison for
-                                # printing in output
-                                with open(fis, "r") as event_f:
-                                    # get last line as above
-                                    csv_read = event_f.readlines()[-1]
-                                    csv_read_split = csv_read.strip().split(",")
+                            # check if human bed file needs writing to, or
+                            # if the human ancestral or descendant coords
+                            # have already been recorded
+                            anc_points = determine_switch_points(anc_desc_dic[final_direction], unique_events_finames[k], "anc")
+                            event_type = determine_point_ordering(anc_points)
+                        # GET START/END CLUSTER POSITIONS IN HUMAN GENOME
+                        fas4_fi = "fas4/" + fis.split("/")[1] + ".fas"
+                        with open(fas4_fi, "r") as f:
+                            fas4_lines = f.readlines()
+                            for i_line, line in enumerate(fas4_lines):
+                                if line.startswith(">homo"):
+                                    fas4_homo_header = line.strip()[1:]
+                                    fas4_homo_seq = fas4_lines[i_line+1].strip()
+                                    break
+                        human_chrom = fas4_homo_header.split(".")[1]
+                        human_block_start = int(fas4_homo_header.split(".")[2])
+                        if fas4_homo_header.split("_")[-1] == "neg":
+                            strand = "reverse"
+                            start_gap_count = fas4_homo_seq[:max(clus_end)].count("-")
+                            end_gap_count = fas4_homo_seq[:(min(clus_start)+2)].count("-")
+                            chrom_len = chrom_len_dic[human_chrom]
+                            bed_start = chrom_len - human_block_start - max(clus_end)+1 + start_gap_count
+                            bed_end = chrom_len - human_block_start - min(clus_start)-1 + end_gap_count
+                        else:
+                            strand = "forward"
+                            start_gap_count = fas4_homo_seq[:(min(clus_start)+2)].count("-")
+                            end_gap_count = fas4_homo_seq[:max(clus_end)].count("-")
+                            bed_start = human_block_start + min(clus_start)+2 - start_gap_count
+                            bed_end = human_block_start + max(clus_end) - end_gap_count
 
-                                    # add csv output to dic or append if exists
-                                    try:
-                                        acceptable_line_dic[k].append(csv_read_split)
-                                    except KeyError:
-                                        acceptable_line_dic[k] = [csv_read_split]
-                                    # get switch point order
-                                    comp_switch_point_dic[fis.split("/")[2]] = csv_read_split[6:10]
-                                    if len(csv_read_split) == 2:
-                                        csv_read_split = csv_read_split[-1]
-                                    
-                                    # get negative strand coordinates of human seq is
-                                    # on neg strand
-                                    clus_start.append(int(csv_read_split[3]))
-                                    clus_end.append(int(csv_read_split[4]))
-                                
-                                # check if human bed file needs writing to
-                                # if the human ancestral or descendant coords
-                                # have already been recorded (as it's the ancestral
-                                # or descendant multiple times, don't record again)
-                                if fis.split("/")[2][:4] == "homo" and congruent_human_coord_logged == 0 and human_desc_bool == 1:
-                                    anc_points = determine_switch_points(final_direction, anc_desc_dic, unique_events_finames[k], "anc")
-                                    event_type = determine_point_ordering(anc_points)
-                                    with open(fi_for_bed, "r") as event_f:
-                                        csv_read = event_f.readlines()[-1]
-                                        csv_read_split = csv_read.strip().split(",")
-                                        csv_logprob = round(float(csv_read_split[26]) - float(csv_read_split[25]), 5)
-                                        chrom = csv_read_split[0]
-                                        sp1_coord_bed = header_start + int(csv_read_split[5])
-                                        if desc_neg == "-":
-                                            # get chrom length
-                                            chrom_len = chrom_len_dic[chrom]
-                                            # generate adjusted negative strand coord
-                                            sp1_coord_bed = chrom_len - header_start - int(csv_read_split[5])
-                                            #sp1_coord_bed = chrom_len - sp1_coord_bed
-
-                                        # create entry in human desc bed file
-                                        # for looking at genomic features
-                                        with open("hominid_template_switch_output/congruent_human_desc/human_desc_congruent.bed", "a") as bed_f:
-                                            bed_f.write("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(chrom, sp1_coord_bed, sp1_coord_bed + 1, desc_neg, total_event_count, csv_logprob, event_type))
-
-                                        # confirm logged
-                                        congruent_human_coord_logged = 1
-                                if fis.split("/")[2][-4:] == "homo" and congruent_human_anc_coord_logged == 0 and human_anc_bool == 1:
-                                    anc_points = determine_switch_points(final_direction, anc_desc_dic, unique_events_finames[k], "anc")
-                                    event_type = determine_point_ordering(anc_points)
-                                    with open(fi_for_bed, "r") as event_f:
-                                        csv_read = event_f.readlines()[-1]
-                                        csv_read_split = csv_read.strip().split(",")
-                                        csv_logprob = round(float(csv_read_split[26]) - float(csv_read_split[25]), 5)
-                                        chrom = csv_read_split[0]
-                                        sp1_coord_bed = header_start + int(csv_read_split[6])
-                                        try:
-                                            assert human_chrom in chrom_len_dic.keys()
-                                            if anc_neg == "-":
-                                                # get chrom length
-                                                chrom_len = chrom_len_dic[human_chrom]
-                                                # generate adjusted negative strand coord
-                                                sp1_coord_bed = chrom_len - header_start - int(csv_read_split[6])
-                                            with open("hominid_template_switch_output/congruent_human_desc/human_anc_congruent.bed", "a") as bed_f:
-                                                bed_f.write("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(human_chrom, sp1_coord_bed, sp1_coord_bed + 1, anc_neg, total_event_count, csv_logprob, event_type))
-                                            congruent_human_anc_coord_logged = 1
-                                        # don't generate bed entry for events found in the assembly not in a
-                                        # chromosome region (e.g. fragment CABD030153268 produces a key error)
-                                        except KeyError:
-                                            pass
-                            if fis.split("/")[2][-4:] == "homo" and congruent_human_anc_coord_logged == 0 and human_anc_bool == 1:
-                                congruent_human_anc_coord_logged = 1
-                            if fis.split("/")[2][:4] == "homo" and congruent_human_coord_logged == 0 and human_desc_bool == 1:
-                                congruent_human_coord_logged = 1
-                        
-                        
-                        # function which takes the congruent direction, anc_desc_dic to determine
-                        # anc and descendent seq, and the list of file names for this event
-                        # to output the descendent and ancestral sequences for
-                        # use in local sequence signal analysis
+                        bed_line = "\t".join(
+                            [str(i) for i in [human_chrom,
+                             bed_start,
+                             bed_end,
+                             total_event_count,
+                             strand,
+                             set_annotation,
+                             anc_or_desc,
+                             event_type + "\n"]]
+                        )
+                        with open("hominid_template_switch_output/bed_output/template_switch_events.bed", "a") as bed_f:
+                            bed_f.write(bed_line)
+                        # function which takes the congruent direction,
+                        # anc_desc_dic to determine anc and descendant seq,
+                        # and the list of file names for this event to output
+                        # the descendant and ancestral sequences for use in
+                        # local sequence signal analysis
                         if final_direction not in ["1234", "1256", "3456"]:
                             desc_seq, anc_seq = determine_anc_desc_seqs(final_direction, anc_desc_dic, unique_events_finames[k])
-                            anc_points = determine_switch_points(final_direction, anc_desc_dic, unique_events_finames[k], "anc")
-                            desc_point = determine_switch_points(final_direction, anc_desc_dic, unique_events_finames[k], "desc")
+                            anc_points = determine_switch_points(anc_desc_dic[final_direction], unique_events_finames[k], "anc")
+                            desc_point = determine_switch_points(anc_desc_dic[final_direction], unique_events_finames[k], "desc")
                             with open(unique_events_finames[k][0], "r") as chrom_f:
                                 chrom = chrom_f.readlines()[-1].strip().split(",")[0]
-                            
+
                             # get +/- 2k sequences around switch points
                             anc_p1 = anc_seq[anc_points[0]-500:anc_points[0]+551]
                             anc_p2 = anc_seq[anc_points[1]-500:anc_points[1]+551]
                             anc_p3 = anc_seq[anc_points[2]-500:anc_points[2]+551]
                             anc_p4 = anc_seq[anc_points[3]-500:anc_points[3]+551]
                             desc_p1 = desc_seq[desc_point-500:desc_point+551]
-                            
+
                             # get +/- 10k sequences around point 1
                             anc_p1_10k = anc_seq[anc_points[0]-10000:anc_points[0]+10001]
                             desc_p1_10k = desc_seq[desc_point-10000:desc_point+10001]
-                            
+
                             # get +/- 100 sequences around point 1
                             anc_p1_150 = anc_seq[anc_points[0]-150:anc_points[0]+151]
                             desc_p1_150 = desc_seq[desc_point-150:desc_point+151]
@@ -1001,7 +987,6 @@ def main():
                             with open("hominid_template_switch_output/sequences/congruent_event_seqs_150.tsv", "a+") as fasta_f:
                                 fasta_f.write(out_line_150)
 
-
                         # PRINT OUTPUT OF CONGRUENT EVENTS
                         min_coord, max_coord = find_min_max_coord(acceptable_line_dic[k])
                         event_title = "Event {0}".format(total_event_count)
@@ -1010,34 +995,34 @@ def main():
                         print("=" * len(event_title))
                         print(event_title)
                         print("=" * len(event_title))
-                        print("Block path: {0}".format(block_path))
-                        if final_direction in ["1234","1256"]:
-                            print("Direction status: congruent/ILS")
+                        if final_direction in ["1234", "1256"]:
+                            print("Phylogenetic placement: ambiguous, species tree or ILS consistent")
                         elif final_direction in ["3456"]:
-                            print("Direction status: congruent/uncertain")
+                            print("Phylogenetic placement: ambiguous, species tree consistent")
+                        elif final_direction in ["16", "24"]:
+                            print("Phylogenetic placement: ILS consistent")
                         else:
-                            print("Direction status: congruent")
-                        print("Observed direction: {0}".format(final_direction))
+                            print("Phylogenetic placement: species tree consistent")
+                        print("Significant comparisons: {0}".format(final_direction))
+                        print("Detected in comparisons: {0}".format(final_direction))
                         print("\nMultiple sequence alignment:\n")
                         print("    Human:", print_align_seq(sequence_dic["homo_sapiens"], min_coord, max_coord))
-                        print(print_arrow(comp_switch_point_dic["homopan"], "up") + switch_point_annotations(comp_switch_point_dic["homopan"], alignment_len, min_coord, max_coord))
                         print(print_arrow(comp_switch_point_dic["panhomo"], "down") + switch_point_annotations(comp_switch_point_dic["panhomo"], alignment_len, min_coord, max_coord))
+                        print(print_arrow(comp_switch_point_dic["homopan"], "up") + switch_point_annotations(comp_switch_point_dic["homopan"], alignment_len, min_coord, max_coord))
                         print("    Chimp:", print_align_seq(sequence_dic["pan_troglodytes"], min_coord, max_coord))
-                        print(print_arrow(comp_switch_point_dic["pangor"], "up") + switch_point_annotations(comp_switch_point_dic["pangor"], alignment_len, min_coord, max_coord))
                         print(print_arrow(comp_switch_point_dic["gorpan"], "down") + switch_point_annotations(comp_switch_point_dic["gorpan"], alignment_len, min_coord, max_coord))
+                        print(print_arrow(comp_switch_point_dic["pangor"], "up") + switch_point_annotations(comp_switch_point_dic["pangor"], alignment_len, min_coord, max_coord))
                         print("  Gorilla:", print_align_seq(sequence_dic["gorilla_gorilla"], min_coord, max_coord))
-                        print(print_arrow(comp_switch_point_dic["gorhomo"], "up") + switch_point_annotations(comp_switch_point_dic["gorhomo"], alignment_len, min_coord, max_coord))
                         print(print_arrow(comp_switch_point_dic["homogor"], "down") + switch_point_annotations(comp_switch_point_dic["homogor"], alignment_len, min_coord, max_coord))
+                        print(print_arrow(comp_switch_point_dic["gorhomo"], "up") + switch_point_annotations(comp_switch_point_dic["gorhomo"], alignment_len, min_coord, max_coord))
                         print("    Human:", print_align_seq(sequence_dic["homo_sapiens"], min_coord, max_coord))
                         print("\n  Cluster:" + cluster_annotation(min(clus_start), max(clus_end), alignment_len, min_coord, max_coord))
                         print("\n")
                         print("Orangutan:", print_align_seq(sequence_dic["pongo_abelii"], min_coord, max_coord))
-                        #print("\n\npairHMM FPA output")
-                        #print("==================")
                         for comp_k in comp_switch_point_dic.keys():
                             if len(comp_switch_point_dic[comp_k]) != 0:
                                 # try:
-                                diverg = pairwise_divergence(unique_events_pair_fastas[k][comp_k])
+                                diverg = dd.pairwise_divergence(unique_events_pair_fastas[k][comp_k])
                                 if large_flank == 1:
                                     scan_flank_par = "100"
                                 else:
@@ -1050,20 +1035,18 @@ def main():
                                 print("\n\n{0}".format(title))
                                 print("-" * len(title))
                                 print(pairHMM_out.decode().lstrip())
-                        # 1) determine outermost sp coord
-                                #except subprocess.CalledProcessError:
-                                #    continue
-                        # 2) get +/- 40bp from end of coord
-                        # 3) determine sp output positions
-                        # 4) determine cluster boundary output positions
-                        # 5) print block for each species with these coords
-                        # 6) print pairHMM output for each comparison w/ event
+
+                    
+                    #################################
+                    # PROCESS PARTIALLY PASS EVENTS #
+                    #################################
                     else:
                         # track if event has been resolved
                         filter_resolved = False
                         cluster_align_resolved = False
                         block_missing_resolved = False
                         resolved_bool = "unresolved"
+                        phylo_place = ""
                         unacceptable_line_dic = {}
 
                         # try to find event or align clusters and determine direction,
@@ -1128,6 +1111,7 @@ def main():
                         if block_missing:
                             inferred_direction = final_direction
                             resolved_bool = "inferred (missing alignment block)"
+                            phylo_place = "ambiguous, missing/gapped/masked alignment block"
                             missing_directions.append(final_direction)
                             block_missing_resolved = True
 
@@ -1136,14 +1120,22 @@ def main():
                             try:
                                 resolve_status = resolve_missing(final_direction, target_set, block_path)
                                 inferred_direction, fail_row = resolve_status[0], resolve_status[1]
-                                fail_annotation = annotate_fail(fail_row)
+                                #fail_annotation = annotate_fail(fail_row)
                                 filter_fail_directions.append(inferred_direction)
                                 resolved_bool = "inferred (failed filter)"
+                                if inferred_direction in ["1234","1256"]:
+                                    phylo_place = "ambiguous, species tree or ILS consistent"
+                                elif inferred_direction in ["3456"]:
+                                    phylo_place = "ambiguous, species tree consistent"
+                                elif inferred_direction in ["16","24"]:
+                                    phylo_place = "ILS consistent"
+                                else:
+                                    phylo_place = "species tree consistent"
                                 fail_df.loc[total_event_count] = fail_row
                                 filter_resolved = True
                             # if can't access resolve_status by index, only None has been output
                             # e.g. fail, no matching line found in global scan file
-                            # then try to align the mutation cluster using muscle.
+                            # then try to align the mutation cluster using clustal.
                             # this step is rarely used and provides a minor improvement in resolution
                             # for the associated upset plot vs. not performing this step
                             except TypeError:
@@ -1152,12 +1144,94 @@ def main():
                                     aligned_cluster_directions.append(resolve_status)
                                     inferred_direction = resolve_status
                                     resolved_bool = "inferred (cluster aligned)"
+                                    if inferred_direction in ["1234","1256"]:
+                                        phylo_place = "ambiguous, species tree or ILS consistent"
+                                    elif inferred_direction in ["3456"]:
+                                        phylo_place = "ambiguous, species tree consistent"
+                                    elif inferred_direction in ["16","24"]:
+                                        phylo_place = "ILS consistent"
+                                    else:
+                                        phylo_place = "species tree consistent"
                                     cluster_align_resolved = True
                             # if everything fails, leave as unresolved
                             except KeyError as keyerr:
                                 with open("key_errors.txt", "a") as f:
                                     f.write(str(keyerr))
                                 inferred_direction = "unresolved"
+                                phylo_place = "unresolved"
+                        
+                        # GET START/END CLUSTER POSITIONS IN HUMAN GENOME
+                        if resolved_bool == "inferred (missing alignment block)":
+                            set_annotation = "incomplete_detection"
+                        elif resolved_bool == "inferred (failed filter)":
+                            set_annotation = "partially_significant"
+                        elif resolved_bool == "inferred (cluster aligned)":
+                            set_annotation = "partially_significant"
+                        else:
+                            set_annotation = "unresolved"
+                        try:
+                            anc_desc = anc_desc_dic[inferred_direction]
+                            if "homo" in anc_desc[0]:
+                                # human_desc_bool = 1
+                                anc_or_desc = "descendant"
+                            elif "homo" in anc_desc[1]:
+                                # human_anc_bool = 1
+                                anc_or_desc = "ancestral"
+                        except KeyError:
+                            anc_or_desc = "uncertain"
+
+                        fas4_fi = "fas4/" + fis.split("/")[1] + ".fas"
+                        event_type = "."
+                        fas4_homo_header = ""
+                        with open(fas4_fi, "r") as f:
+                            fas4_lines = f.readlines()
+                            for i_line, line in enumerate(fas4_lines):
+                                if line.startswith(">homo"):
+                                    fas4_homo_header = line.strip()[1:]
+                                    fas4_homo_seq = fas4_lines[i_line+1].strip()
+                                    break
+                        if fas4_homo_header != "":
+                            human_chrom = fas4_homo_header.split(".")[1]
+                            human_block_start = int(fas4_homo_header.split(".")[2])
+                            if fas4_homo_header.split("_")[-1] == "neg":
+                                strand = "reverse"
+                                start_gap_count = fas4_homo_seq[:max(clus_end)].count("-")
+                                end_gap_count = fas4_homo_seq[:(min(clus_start)+2)].count("-")
+                                chrom_len = chrom_len_dic[human_chrom]
+                                bed_start = chrom_len - human_block_start - max(clus_end)+1 + start_gap_count
+                                bed_end = chrom_len - human_block_start - min(clus_start)-1 + end_gap_count
+                            else:
+                                strand = "forward"
+                                start_gap_count = fas4_homo_seq[:(min(clus_start)+2)].count("-")
+                                end_gap_count = fas4_homo_seq[:max(clus_end)].count("-")
+                                bed_start = human_block_start + min(clus_start)+2 - start_gap_count
+                                bed_end = human_block_start + max(clus_end) - end_gap_count
+                                
+                            bed_line = "\t".join(
+                                [str(i) for i in [human_chrom,
+                                 bed_start,
+                                 bed_end,
+                                 total_event_count,
+                                 strand,
+                                 set_annotation,
+                                 anc_or_desc,
+                                 event_type + "\n"]]
+                            )
+                            with open("hominid_template_switch_output/bed_output/template_switch_events.bed", "a") as bed_f:
+                                bed_f.write(bed_line)
+                        else:
+                            bed_line = "\t".join(
+                                [str(i) for i in [".",
+                                 ".",
+                                 ".",
+                                 total_event_count,
+                                 ".",
+                                 set_annotation,
+                                 ".",
+                                 "." + "\n"]]
+                            )
+                            with open("hominid_template_switch_output/bed_output/template_switch_events.bed", "a") as bed_f:
+                                bed_f.write(bed_line)
 
                         # PRINT INFERRED/UNRESOLVED EVENTS
                         event_title = "Event {0}".format(total_event_count)
@@ -1166,35 +1240,30 @@ def main():
                         print("=" * len(event_title))
                         print(event_title)
                         print("=" * len(event_title))
-                        print("Block path: {0}".format(block_path))
-                        print("Direction status: {0}".format(resolved_bool))
-                        print("Observed direction: {0}".format(final_direction))
+                        print("Phylogenetic placement: {0}".format(phylo_place))
+                        print("Significant comparisons: {0}".format(final_direction))
                         if inferred_direction:
-                            print("Inferred direction: {0}".format(inferred_direction))
+                            print("Detected in comparisons: {0}".format(inferred_direction))
                         else:
-                            print("Inferred direction: -")
-                        if filter_resolved:
-                            print("Fail annotation: " + ", ".join(['{0} {1}'.format(k, v) for k,v in fail_annotation.items()]))
+                            print("Detected in comparisons: {0}".format(final_direction))
                         print("\nMultiple sequence alignment:\n")
                         print("    Human:", print_align_seq(sequence_dic["homo_sapiens"], min_coord, max_coord))
-                        print(print_arrow(comp_switch_point_dic["homopan"], "up") + switch_point_annotations(comp_switch_point_dic["homopan"], alignment_len, min_coord, max_coord))
                         print(print_arrow(comp_switch_point_dic["panhomo"], "down") + switch_point_annotations(comp_switch_point_dic["panhomo"], alignment_len, min_coord, max_coord))
+                        print(print_arrow(comp_switch_point_dic["homopan"], "up") + switch_point_annotations(comp_switch_point_dic["homopan"], alignment_len, min_coord, max_coord))
                         print("    Chimp:", print_align_seq(sequence_dic["pan_troglodytes"], min_coord, max_coord))
-                        print(print_arrow(comp_switch_point_dic["pangor"], "up") + switch_point_annotations(comp_switch_point_dic["pangor"], alignment_len, min_coord, max_coord))
                         print(print_arrow(comp_switch_point_dic["gorpan"], "down") + switch_point_annotations(comp_switch_point_dic["gorpan"], alignment_len, min_coord, max_coord))
+                        print(print_arrow(comp_switch_point_dic["pangor"], "up") + switch_point_annotations(comp_switch_point_dic["pangor"], alignment_len, min_coord, max_coord))
                         print("  Gorilla:", print_align_seq(sequence_dic["gorilla_gorilla"], min_coord, max_coord))
-                        print(print_arrow(comp_switch_point_dic["gorhomo"], "up") + switch_point_annotations(comp_switch_point_dic["gorhomo"], alignment_len, min_coord, max_coord))
                         print(print_arrow(comp_switch_point_dic["homogor"], "down") + switch_point_annotations(comp_switch_point_dic["homogor"], alignment_len, min_coord, max_coord))
+                        print(print_arrow(comp_switch_point_dic["gorhomo"], "up") + switch_point_annotations(comp_switch_point_dic["gorhomo"], alignment_len, min_coord, max_coord))
                         print("    Human:", print_align_seq(sequence_dic["homo_sapiens"], min_coord, max_coord))
                         print("\n  Cluster:" + cluster_annotation(min(clus_start), max(clus_end), alignment_len, min_coord, max_coord))
                         print("\n")
                         print("Orangutan:", print_align_seq(sequence_dic["pongo_abelii"], min_coord, max_coord))
-                        #print("\n\npairHMM FPA output")
-                        #print("==================")
                         for comp_k in comp_switch_point_dic.keys():
                             if len(comp_switch_point_dic[comp_k]) != 0:
                                 try:
-                                    diverg = pairwise_divergence(unique_events_pair_fastas[k][comp_k])
+                                    diverg = dd.pairwise_divergence(unique_events_pair_fastas[k][comp_k])
 
                                     if large_flank == 1:
                                         scan_flank_par = "100"
