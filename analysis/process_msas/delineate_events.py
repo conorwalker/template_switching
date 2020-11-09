@@ -384,7 +384,8 @@ def muscle_align_segs(h, p, g):
     was unsuccessful.
     """
     seqs = {"h": "", "p": "", "g": ""}
-    muscle = "/nfs/research1/goldman/conor/tools/muscle3.8.31/muscle"
+    # add path to muscle
+    muscle = ""
     with open("tmpfas.fa", "w") as f:
         f.write(">h\n{0}\n>p\n{1}\n>g\n{2}".format(h, p, g))
     try:
@@ -834,7 +835,7 @@ def main():
                                 reversible_switch_point_order = "1"
                             else:
                                 reversible_switch_point_order = "0"
-                            with open("hominid_template_switch_output/point_orders/congruent_points.tsv", "a+") as point_fi:
+                            with open("/point_orders/congruent_points.tsv", "a+") as point_fi:
                                 point_fi.write(ancestral_switch_point_order + "\t" + reversible_switch_point_order + "\n")
 
                         # get path of alignment block
@@ -899,7 +900,7 @@ def main():
                                 local_csv_read = local_event_fi.readlines()[-1]
 
                             # store output of pairHMM for congruent events
-                            with open("hominid_template_switch_output/pairHMM_output/congruent_pairHMM_output.csv", "a+") as f:
+                            with open("{}/pairHMM_output/congruent_pairHMM_output.csv".format(root_dir), "a+") as f:
                                 f.write(str(total_event_count) + "," + final_direction + "," + local_csv_read)
 
                             # check if human bed file needs writing to, or
@@ -942,7 +943,7 @@ def main():
                              anc_or_desc,
                              event_type + "\n"]]
                         )
-                        with open("hominid_template_switch_output/bed_output/template_switch_events.bed", "a") as bed_f:
+                        with open("/bed_output/template_switch_events.bed", "a") as bed_f:
                             bed_f.write(bed_line)
                         # function which takes the congruent direction,
                         # anc_desc_dic to determine anc and descendant seq,
@@ -980,11 +981,11 @@ def main():
                             out_line_10k = "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(total_event_count, chrom, event_twothree_len, event_direction, event_type, desc_p1_10k, anc_p1_10k)
                             out_line_150 = "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(total_event_count, chrom, event_twothree_len, event_direction, event_type, desc_p1_150, anc_p1_150)
 
-                            with open("hominid_template_switch_output/sequences/congruent_event_seqs.tsv", "a+") as fasta_f:
+                            with open("{}/sequences/congruent_event_seqs.tsv".format(root_dir), "a+") as fasta_f:
                                 fasta_f.write(out_line)
-                            with open("hominid_template_switch_output/sequences/congruent_event_seqs_10k.tsv", "a+") as fasta_f:
+                            with open("{}/sequences/congruent_event_seqs_10k.tsv".format(root_dir), "a+") as fasta_f:
                                 fasta_f.write(out_line_10k)
-                            with open("hominid_template_switch_output/sequences/congruent_event_seqs_150.tsv", "a+") as fasta_f:
+                            with open("{}/sequences/congruent_event_seqs_150.tsv".format(root_dir), "a+") as fasta_f:
                                 fasta_f.write(out_line_150)
 
                         # PRINT OUTPUT OF CONGRUENT EVENTS
@@ -1057,7 +1058,7 @@ def main():
                         # record pairHMM output for events without a congruent direction
                         # used to determine most stringent reason for failure
                         # most of the time this is the LPR threshold
-                        unres_fi = open("hominid_template_switch_output/troubleshooting/noncongruent_event_output.csv", "a+")
+                        unres_fi = open("{}/troubleshooting/noncongruent_event_output.csv".format(root_dir), "a+")
                         unres_fi.write(str(final_direction))
                         for fis in unique_events_finames[k]:
                             for scanned_dirs in unique_events_finames[k]:
@@ -1217,7 +1218,7 @@ def main():
                                  anc_or_desc,
                                  event_type + "\n"]]
                             )
-                            with open("hominid_template_switch_output/bed_output/template_switch_events.bed", "a") as bed_f:
+                            with open("{}/bed_output/template_switch_events.bed".format(root_dir), "a") as bed_f:
                                 bed_f.write(bed_line)
                         else:
                             bed_line = "\t".join(
@@ -1230,7 +1231,7 @@ def main():
                                  ".",
                                  "." + "\n"]]
                             )
-                            with open("hominid_template_switch_output/bed_output/template_switch_events.bed", "a") as bed_f:
+                            with open("{}/bed_output/template_switch_events.bed".format(root_dir), "a") as bed_f:
                                 bed_f.write(bed_line)
 
                         # PRINT INFERRED/UNRESOLVED EVENTS
@@ -1285,36 +1286,36 @@ def main():
                         else:
                             final_direction_list.append(inferred_direction)
                         if filter_resolved:
-                            with open("hominid_template_switch_output/pairHMM_output/filter_resolved_pairHMM_output.csv", "a+") as f:
+                            with open("{}/pairHMM_output/filter_resolved_pairHMM_output.csv".format(root_dir), "a+") as f:
                                 f.write(str(total_event_count) + "," + final_direction + "," + csv_read)
                         elif cluster_align_resolved:
-                            with open("hominid_template_switch_output/pairHMM_output/clusteralign_resolved_pairHMM_output.csv", "a+") as f:
+                            with open("{}/pairHMM_output/clusteralign_resolved_pairHMM_output.csv".format(root_dir), "a+") as f:
                                 f.write(str(total_event_count) + "," + final_direction + "," + csv_read)
                         elif block_missing_resolved:
-                            with open("hominid_template_switch_output/pairHMM_output/missing_resolved_pairHMM_output.csv", "a+") as f:
+                            with open("{}/pairHMM_output/missing_resolved_pairHMM_output.csv".format(root_dir), "a+") as f:
                                 f.write(str(total_event_count) + "," + final_direction + "," + csv_read)
                         else:
-                            with open("hominid_template_switch_output/pairHMM_output/unresolved_pairHMM_output.csv", "a+") as f:
+                            with open("{}/pairHMM_output/unresolved_pairHMM_output.csv".format(root_dir), "a+") as f:
                                 f.write(str(total_event_count) + "," + final_direction + "," + csv_read)
 
     # write final direction output as csvs, used for plotting later
     # this information is also included in various other outputs in a more
     # human readable format
-    with open("hominid_template_switch_output/directions/final_directions.csv", "w") as f:
+    with open("{}/directions/final_directions.csv".format(root_dir), "w") as f:
         f.write(",".join(final_direction_list))
-    with open("hominid_template_switch_output/directions/congruent_directions.csv", "w") as f:
+    with open("{}/directions/congruent_directions.csv".format(root_dir), "w") as f:
         f.write(",".join(congruent_directions))
-    with open("hominid_template_switch_output/directions/filter_fail_directions.csv", "w") as f:
+    with open("{}/directions/filter_fail_directions.csv".format(root_dir), "w") as f:
         f.write(",".join(filter_fail_directions))
-    with open("hominid_template_switch_output/directions/cluster_aligned_directions.csv", "w") as f:
+    with open("{}/directions/cluster_aligned_directions.csv".format(root_dir), "w") as f:
         f.write(",".join(aligned_cluster_directions))
-    with open("hominid_template_switch_output/directions/unresolved_directions.csv", "w") as f:
+    with open("{}/directions/unresolved_directions.csv".format(root_dir), "w") as f:
         f.write(",".join(unresolved_directions))
-    with open("hominid_template_switch_output/directions/missing_directions.csv", "w") as f:
+    with open("{}/directions/missing_directions.csv".format(root_dir), "w") as f:
         f.write(",".join(missing_directions))
 
     # csv of fail reasons
-    fail_df.to_csv("hominid_template_switch_output/fail_dataframe/event_fail_dataframe.csv", sep=",")
+    fail_df.to_csv("{}/fail_dataframe/event_fail_dataframe.csv".format(root_dir), sep=",")
 
 
 if __name__ == "__main__":
