@@ -45,7 +45,7 @@ write.table(anc_preds$HelT, file="anc_HelT.csv", sep=",",col.names=F,row.names=F
 write.table(anc_preds$Roll, file="anc_Roll.csv", sep=",",col.names=F,row.names=F)
 write.table(anc_preds$ProT, file="anc_ProT.csv", sep=",",col.names=F,row.names=F)
 
-write.table(random_preds$MGW, file="anc_MGW.csv", sep=",",col.names=F,row.names=F)
-write.table(random_preds$HelT, file="anc_HelT.csv", sep=",",col.names=F,row.names=F)
-write.table(random_preds$Roll, file="anc_Roll.csv", sep=",",col.names=F,row.names=F)
-write.table(random_preds$ProT, file="anc_ProT.csv", sep=",",col.names=F,row.names=F)
+write.table(random_preds$MGW, file="rand_MGW.csv", sep=",",col.names=F,row.names=F)
+write.table(random_preds$HelT, file="rand_HelT.csv", sep=",",col.names=F,row.names=F)
+write.table(random_preds$Roll, file="rand_Roll.csv", sep=",",col.names=F,row.names=F)
+write.table(random_preds$ProT, file="rand_ProT.csv", sep=",",col.names=F,row.names=F)
